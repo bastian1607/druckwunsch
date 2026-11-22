@@ -147,6 +147,8 @@ label > input, label > select, label > textarea { margin-top: .25rem; color: var
   padding: .65rem .75rem; margin-bottom: .55rem; cursor: pointer; border-left: 4px solid transparent;
 }
 .card:hover { outline: 2px solid var(--border); }
+.card.can-drag { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.board.is-dragging { scroll-snap-type: none !important; }
 .column[data-key=progress] .card { border-left-color: var(--c-progress); }
 .column[data-key=done] .card { border-left-color: var(--c-done); opacity: .85; }
 .card .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: .35rem; }
@@ -180,6 +182,21 @@ label > input, label > select, label > textarea { margin-top: .25rem; color: var
 .title-input { font-size: 1.15rem; font-weight: 700; border-color: transparent; background: var(--surface-2); }
 .meta { font-size: .82rem; color: var(--muted); margin-top: .45rem; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+.date-input { max-width: 220px; }
+.status-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.status-btn {
+  display: flex; align-items: center; justify-content: center; gap: .4rem;
+  padding: .55rem .4rem; border-radius: 8px; border: 2px solid var(--border);
+  background: var(--surface-2); cursor: pointer; font-size: .85rem; font-weight: 600; line-height: 1.2;
+}
+.status-btn .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.status-btn[data-key=backlog] .dot { background: var(--c-backlog); }
+.status-btn[data-key=wishes] .dot { background: var(--c-wishes); }
+.status-btn[data-key=progress] .dot { background: var(--c-progress); }
+.status-btn[data-key=done] .dot { background: var(--c-done); }
+.status-btn.active { border-color: var(--primary); background: var(--surface); }
+.status-btn:disabled { opacity: .4; cursor: not-allowed; }
+.status-btn:not(:disabled):not(.active):hover { border-color: var(--muted); }
 .dialog-actions { display: flex; gap: .5rem; margin-top: 1rem; align-items: center; }
 .link-list { list-style: none; padding: 0; margin: 0; }
 .link-list li { display: flex; align-items: center; gap: .5rem; padding: .35rem .5rem; background: var(--surface-2); border-radius: 8px; margin-bottom: .3rem; }
@@ -215,5 +232,7 @@ label > input, label > select, label > textarea { margin-top: .25rem; color: var
   .column { scroll-snap-align: center; max-height: calc(100vh - 130px); }
   .menu { top: 100px; }
   .grid2 { grid-template-columns: 1fr; gap: 0; }
+  .status-picker { grid-template-columns: 1fr 1fr; }
+  .date-input { max-width: none; }
   .dialog { padding: 1rem; }
 }

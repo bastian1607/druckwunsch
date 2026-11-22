@@ -62,14 +62,13 @@
         <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
       </div>
       <div class="meta" id="card-meta"></div>
-      <div class="grid2">
-        <label>Status
-          <select name="columnKey" id="card-status"></select>
-        </label>
-        <label>Gewünscht bis
-          <input type="date" name="dueDate">
-        </label>
+      <div class="field">
+        <span class="field-label">Status <span id="card-status-hint" class="muted"></span></span>
+        <div id="card-status" class="status-picker" role="radiogroup" aria-label="Status"></div>
       </div>
+      <label>Gewünscht bis
+        <input type="date" name="dueDate" class="date-input">
+      </label>
       <label>Beschreibung
         <textarea name="description" rows="4" placeholder="Farbe, Größe, Material, Anzahl, wofür …" maxlength="10000"></textarea>
       </label>

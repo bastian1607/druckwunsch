@@ -3,7 +3,7 @@
 Kanban-Board für 3D-Druck-Wünsche der Familie, mit den Spalten **Zurückgestellt · Wünsche · In Bearbeitung · Fertig**.
 
 - Karten zeigen, wer den Wunsch eingestellt hat, außerdem Tags, Links (Printables, MakerWorld, Thingiverse …), einen Wunschtermin und Kommentare
-- Drag & Drop, auch per Touch (Karte kurz gedrückt halten)
+- Verschieben per Drag & Drop (auf dem Handy: Karte kurz gedrückt halten und an den Rand ziehen) oder per Tipp auf die Status-Knöpfe in der Karte
 - Live-Aktualisierung: Änderungen erscheinen bei allen sofort
 - Anmeldung per Name + PIN/Passwort (mind. 6 Zeichen). Admin wird nur, wer den Einrichtungs-Code aus der Installation kennt.
 - Rechte: Familienmitglieder legen Wünsche an, bearbeiten ihre eigenen und können sie zwischen *Wünsche* und *Zurückgestellt* verschieben. Nur Admins setzen *In Bearbeitung* / *Fertig* und legen die Reihenfolge fest.

@@ -213,13 +213,25 @@
           group: 'board',
           draggable: '.can-drag',
           animation: 150,
-          delay: 180,
+          delay: 200,
           delayOnTouchOnly: true,
+          touchStartThreshold: 6,
+          // Auto-Scroll, wenn die Karte an den Rand gezogen wird (wichtig auf dem Handy)
+          scroll: true,
+          forceAutoScrollFallback: true,
+          scrollSensitivity: 60,
+          scrollSpeed: 7,
+          bubbleScroll: true,
           // Familienmitglieder: nur zwischen "Wünsche" und "Zurückgestellt"
           onMove: (evt) => S.me.isAdmin || isOpenCol(evt.to.dataset.key),
-          onStart: () => (S.dragging = true),
+          onStart: () => {
+            S.dragging = true;
+            board.classList.add('is-dragging'); // Einrasten der Spalten aus, sonst springt das Board zurück
+            if (navigator.vibrate) navigator.vibrate(15);
+          },
           onEnd: async (evt) => {
             S.dragging = false;
+            board.classList.remove('is-dragging');
             if (evt.from === evt.to && evt.oldIndex === evt.newIndex) return;
             const id = Number(evt.item.dataset.id);
             const order = [...evt.to.querySelectorAll('.card')].map((el) => Number(el.dataset.id));
@@ -309,18 +321,12 @@
     F.description.value = card.description;
     F.dueDate.value = card.dueDate || '';
 
-    // Status-Auswahl
-    const sel = $('#card-status');
-    const allowedCols = S.me.isAdmin ? S.board.columns : S.board.columns.filter((c) => isOpenCol(c.key));
-    const opts = allowedCols.some((c) => c.key === card.columnKey) ? allowedCols : [...allowedCols, { key: card.columnKey, title: colTitle(card.columnKey) }];
-    sel.replaceChildren(...opts.map((c) => h('option', { value: c.key }, c.title)));
-    sel.value = card.columnKey;
-    const canMove = S.me.isAdmin || (card.createdBy === S.me.id && isOpenCol(card.columnKey));
-    sel.disabled = !canMove;
+    renderStatus();
+    const canMove = canMoveCard(S.card);
 
     for (const el of [F.title, F.description, F.dueDate, $('#link-input'), $('#link-add'), $('#tag-new-name'), $('#tag-new-color'), $('#tag-add')])
       el.disabled = !editable;
-    $('#card-save').classList.toggle('hidden', !editable && !canMove);
+    $('#card-save').classList.toggle('hidden', !editable);
     const canDelete = card.id && (S.me.isAdmin || (card.createdBy === S.me.id && isOpenCol(card.columnKey)));
     $('#card-delete').classList.toggle('hidden', !canDelete);
 
@@ -341,6 +347,54 @@
     renderComments(card.comments);
     $('#card-dialog').showModal();
     if (!card.id) F.title.focus();
+  }
+
+  // ---------- Status-Knöpfe: ein Tipp verschiebt die Karte sofort ----------
+  function canMoveCard(c) {
+    return !c.id || S.me.isAdmin || (c.createdBy === S.me.id && isOpenCol(c.columnKey));
+  }
+  function renderStatus() {
+    const c = S.card;
+    const movable = canMoveCard(c);
+    $('#card-status-hint').textContent = !movable
+      ? '– ändert der Drucker-Admin'
+      : c.id ? '– antippen zum Verschieben' : '';
+    $('#card-status').replaceChildren(
+      ...S.board.columns.map((col) => {
+        const allowed = movable && (S.me.isAdmin || isOpenCol(col.key));
+        const active = col.key === c.columnKey;
+        return h(
+          'button',
+          {
+            type: 'button',
+            role: 'radio',
+            'aria-checked': active ? 'true' : 'false',
+            class: `status-btn ${active ? 'active' : ''}`,
+            dataset: { key: col.key },
+            disabled: !allowed && !active,
+            onclick: () => allowed && !active && setStatus(col.key),
+          },
+          h('span', { class: 'dot' }),
+          col.title
+        );
+      })
+    );
+  }
+  async function setStatus(key) {
+    const c = S.card;
+    if (!c.id) {
+      c.columnKey = key; // neue Karte: wird beim Speichern angelegt
+      return renderStatus();
+    }
+    try {
+      await api('POST', `/api/cards/${c.id}/move`, { columnKey: key });
+      c.columnKey = key;
+      renderStatus();
+      toast(`Verschoben nach „${colTitle(key)}“`);
+      loadBoard();
+    } catch (err) {
+      $('#card-error').textContent = err.message;
+    }
   }
 
   function renderLinks() {
@@ -422,14 +476,9 @@
       links: c.links,
       tags: c.tags,
     };
-    const newCol = $('#card-status').value;
     try {
-      if (!c.id) {
-        await api('POST', '/api/cards', { ...payload, columnKey: newCol });
-      } else {
-        if (c.editable) await api('PATCH', `/api/cards/${c.id}`, payload);
-        if (newCol !== c.columnKey) await api('POST', `/api/cards/${c.id}/move`, { columnKey: newCol });
-      }
+      if (!c.id) await api('POST', '/api/cards', { ...payload, columnKey: c.columnKey });
+      else if (c.editable) await api('PATCH', `/api/cards/${c.id}`, payload);
       $('#card-dialog').close();
       loadBoard();
     } catch (err) {
