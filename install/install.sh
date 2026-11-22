@@ -116,6 +116,8 @@ ExecStart=
 ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 $TERM
 EOF
 systemctl daemon-reload
+# sofort wirksam machen, nicht erst nach dem nächsten Neustart des Containers
+systemctl restart container-getty@1.service 2>/dev/null || true
 
 msg_info "Räume auf"
 apt-get -y -qq autoremove >/dev/null
