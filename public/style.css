@@ -85,7 +85,7 @@ label > input, label > select, label > textarea { margin-top: .25rem; color: var
 .auth-box { background: var(--surface); padding: 2rem; border-radius: 16px; box-shadow: var(--shadow); width: 100%; max-width: 380px; text-align: center; }
 .auth-box form { text-align: left; }
 .auth-box .btn { width: 100%; margin-top: 1rem; padding: .7rem; }
-.logo { font-size: 3rem; }
+.logo { display: block; margin: 0 auto .4rem; border-radius: 18px; }
 .auth h1 { margin: .2rem 0 1rem; }
 .user-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: .5rem; }
 .user-picker button {
@@ -110,7 +110,8 @@ label > input, label > select, label > textarea { margin-top: .25rem; color: var
   display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
   padding: .6rem 16px; background: var(--surface); border-bottom: 1px solid var(--border);
 }
-.brand { font-weight: 700; font-size: 1.1rem; }
+.brand { font-weight: 700; font-size: 1.1rem; display: flex; align-items: center; gap: .5rem; }
+.brand img { border-radius: 7px; }
 .filters { display: flex; gap: .5rem; flex: 1 1 360px; min-width: 0; }
 .filters input { flex: 2; min-width: 0; }
 .filters select { flex: 1; min-width: 0; }

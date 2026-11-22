@@ -9,6 +9,7 @@ Kanban-Board für 3D-Druck-Wünsche der Familie, mit den Spalten **Zurückgestel
 - Anmeldung per Name + PIN/Passwort (mind. 6 Zeichen). Admin wird nur, wer den Einrichtungs-Code aus der Installation kennt.
 - Rechte: Familienmitglieder legen Wünsche an, bearbeiten ihre eigenen und können sie zwischen *Wünsche* und *Zurückgestellt* verschieben. Nur Admins setzen *In Bearbeitung* / *Fertig* und legen die Reihenfolge fest.
 - Hell/Dunkel nach Systemeinstellung, auf dem Handy gut bedienbar
+- Eigenes App-Icon. Auf dem Handy über *Teilen → Zum Home-Bildschirm* (iPhone) bzw. *⋮ → App installieren* (Android) wie eine eigene App nutzbar
 
 ## Installation auf Proxmox VE
 
