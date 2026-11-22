@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
-  const S = { me: null, board: null, users: [], filter: { q: '', user: '', tag: '' }, dragging: false, card: null };
+  const S = { me: null, board: null, users: [], filter: { q: '', user: '', assignee: '', tag: '' }, dragging: false, card: null };
 
   // ---------- Hilfsfunktionen ----------
   function h(tag, attrs = {}, ...children) {
@@ -145,8 +145,16 @@
   function fillFilters() {
     const fu = $('#f-user');
     const ft = $('#f-tag');
-    fu.replaceChildren(h('option', { value: '' }, 'Alle Personen'), ...S.board.users.map((u) => h('option', { value: u.id }, u.name)));
-    ft.replaceChildren(h('option', { value: '' }, 'Alle Tags'), ...S.board.tags.map((t) => h('option', { value: t.id }, t.name)));
+    fu.replaceChildren(h('option', { value: '' }, 'Von: alle'), ...S.board.users.map((u) => h('option', { value: u.id }, u.name)));
+    ft.replaceChildren(h('option', { value: '' }, 'Tags: alle'), ...S.board.tags.map((t) => h('option', { value: t.id }, t.name)));
+    const fa = $('#f-assignee');
+    fa.replaceChildren(
+      h('option', { value: '' }, 'Zuständig: alle'),
+      h('option', { value: 'me' }, '⏳ Wartet auf mich'),
+      h('option', { value: 'none' }, 'Niemand zuständig'),
+      ...S.board.users.map((u) => h('option', { value: u.id }, `Zuständig: ${u.name}`))
+    );
+    fa.value = S.filter.assignee;
     fu.value = S.filter.user;
     ft.value = S.filter.tag;
   }
@@ -154,10 +162,13 @@
   function matches(c) {
     const f = S.filter;
     if (f.user && String(c.createdBy) !== f.user) return false;
+    if (f.assignee === 'me' && c.assignedTo !== S.me.id) return false;
+    if (f.assignee === 'none' && c.assignedTo) return false;
+    if (f.assignee && !['me', 'none'].includes(f.assignee) && String(c.assignedTo) !== f.assignee) return false;
     if (f.tag && !c.tags.includes(Number(f.tag))) return false;
     if (f.q) {
       const q = f.q.toLowerCase();
-      if (!(c.title + ' ' + c.description + ' ' + (c.creatorName || '')).toLowerCase().includes(q)) return false;
+      if (!(c.title + ' ' + c.description + ' ' + (c.creatorName || '') + ' ' + (c.assigneeName || '')).toLowerCase().includes(q)) return false;
     }
     return true;
   }
@@ -185,13 +196,20 @@
           c.dueDate && h('span', { class: `due ${c.dueDate < today && col.key !== 'done' ? 'over' : ''}`, title: 'Gewünscht bis' }, '📅 ' + dateFmt.format(new Date(c.dueDate))),
           c.description && h('span', { title: 'Hat Beschreibung' }, '≡'),
           c.links.length > 0 && h('span', { title: `${c.links.length} Link(s)` }, `🔗 ${c.links.length}`),
-          c.commentCount > 0 && h('span', { title: 'Kommentare' }, `💬 ${c.commentCount}`)
+          c.commentCount > 0 && h('span', { title: 'Kommentare' }, `💬 ${c.commentCount}`),
+          c.assignedTo &&
+            h(
+              'span',
+              { class: `assignee ${c.assignedTo === S.me.id ? 'me' : ''}`, title: `Zuständig: ${c.assigneeName}` },
+              c.assignedTo === S.me.id ? 'Bei dir' : '',
+              avatar(c.assigneeName, c.assigneeColor)
+            )
         );
         const tags = c.tags.map((id) => tagById.get(id)).filter(Boolean);
         list.append(
           h(
             'li',
-            { class: `card ${canDrag ? 'can-drag' : ''}`, dataset: { id: c.id }, onclick: () => openCard(c.id) },
+            { class: `card ${canDrag ? 'can-drag' : ''} ${c.assignedTo === S.me.id && col.key !== 'done' ? 'mine' : ''}`, dataset: { id: c.id }, onclick: () => openCard(c.id) },
             tags.length > 0 && h('div', { class: 'tags' }, tags.map(tagEl)),
             h('div', { class: 'card-title' }, c.title),
             foot
@@ -251,6 +269,7 @@
   // Filter
   $('#f-search').addEventListener('input', (e) => { S.filter.q = e.target.value.trim(); renderBoard(); });
   $('#f-user').addEventListener('change', (e) => { S.filter.user = e.target.value; renderBoard(); });
+  $('#f-assignee').addEventListener('change', (e) => { S.filter.assignee = e.target.value; renderBoard(); });
   $('#f-tag').addEventListener('change', (e) => { S.filter.tag = e.target.value; renderBoard(); });
 
   // Menü
@@ -311,7 +330,7 @@
         return toast(err.message);
       }
     } else {
-      card = { id: null, title: '', description: '', columnKey, dueDate: null, links: [], tags: [], comments: [], createdBy: S.me.id };
+      card = { id: null, title: '', description: '', columnKey, dueDate: null, links: [], tags: [], comments: [], createdBy: S.me.id, assignedTo: null };
     }
     S.card = { ...card, links: card.links.map((l) => l.url), tags: [...card.tags] };
     const editable = !card.id || S.me.isAdmin || card.createdBy === S.me.id;
@@ -322,7 +341,7 @@
     F.dueDate.value = card.dueDate || '';
 
     renderStatus();
-    const canMove = canMoveCard(S.card);
+    renderAssignee();
 
     for (const el of [F.title, F.description, F.dueDate, $('#link-input'), $('#link-add'), $('#tag-new-name'), $('#tag-new-color'), $('#tag-add')])
       el.disabled = !editable;
@@ -396,6 +415,38 @@
       $('#card-error').textContent = err.message;
     }
   }
+
+  // ---------- Zuständig ----------
+  function canAssign(c) {
+    return !c.id || S.me.isAdmin || c.createdBy === S.me.id || c.assignedTo === S.me.id;
+  }
+  function renderAssignee() {
+    const c = S.card;
+    const sel = $('#card-assignee');
+    sel.replaceChildren(
+      h('option', { value: '' }, '– niemand –'),
+      ...S.board.users.map((u) => h('option', { value: u.id }, u.id === S.me.id ? `${u.name} (ich)` : u.name))
+    );
+    sel.value = c.assignedTo ? String(c.assignedTo) : '';
+    sel.disabled = !canAssign(c);
+    $('#card-assignee-hint').textContent = c.assignedTo === S.me.id && c.id ? '– wartet auf dich' : '';
+  }
+  $('#card-assignee').addEventListener('change', async (e) => {
+    const c = S.card;
+    const userId = e.target.value ? Number(e.target.value) : null;
+    if (!c.id) return void (c.assignedTo = userId); // neue Karte: wird beim Speichern übernommen
+    try {
+      await api('POST', `/api/cards/${c.id}/assignee`, { userId });
+      c.assignedTo = userId;
+      const u = S.board.users.find((x) => x.id === userId);
+      toast(u ? `Jetzt zuständig: ${u.name}` : 'Niemand mehr zuständig');
+      renderAssignee();
+      loadBoard();
+    } catch (err) {
+      $('#card-error').textContent = err.message;
+      renderAssignee();
+    }
+  });
 
   function renderLinks() {
     const ul = $('#link-list');
@@ -477,7 +528,7 @@
       tags: c.tags,
     };
     try {
-      if (!c.id) await api('POST', '/api/cards', { ...payload, columnKey: c.columnKey });
+      if (!c.id) await api('POST', '/api/cards', { ...payload, columnKey: c.columnKey, assignedTo: c.assignedTo || null });
       else if (c.editable) await api('PATCH', `/api/cards/${c.id}`, payload);
       $('#card-dialog').close();
       loadBoard();

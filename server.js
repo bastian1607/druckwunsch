@@ -282,8 +282,9 @@ function loadCards(where = '', params = []) {
       `SELECT c.id, c.title, c.description, c.column_key AS columnKey, c.position, c.due_date AS dueDate,
               c.created_at AS createdAt, c.updated_at AS updatedAt, c.moved_at AS movedAt,
               c.created_by AS createdBy, u.name AS creatorName, u.color AS creatorColor,
+              c.assigned_to AS assignedTo, a.name AS assigneeName, a.color AS assigneeColor,
               (SELECT COUNT(*) FROM comments m WHERE m.card_id = c.id) AS commentCount
-       FROM cards c LEFT JOIN users u ON u.id = c.created_by ${where}
+       FROM cards c LEFT JOIN users u ON u.id = c.created_by LEFT JOIN users a ON a.id = c.assigned_to ${where}
        ORDER BY c.position, c.id`
     )
     .all(...params);
@@ -311,6 +312,12 @@ function getCard(id) {
   const c = db.prepare('SELECT * FROM cards WHERE id = ?').get(Number(id));
   if (!c) fail(404, 'Karte nicht gefunden.');
   return c;
+}
+function validAssignee(v) {
+  if (v === null || v === undefined || v === '' || v === 0) return null;
+  const u = db.prepare('SELECT id FROM users WHERE id = ?').get(Number(v));
+  if (!u) fail(400, 'Unbekannte Person.');
+  return u.id;
 }
 function canEdit(user, card) {
   return user.isAdmin || card.created_by === user.id;
@@ -361,9 +368,17 @@ app.post(
       const max = db.prepare('SELECT COALESCE(MAX(position), 0) AS m FROM cards WHERE column_key = ?').get(column).m;
       const id = db
         .prepare(
-          'INSERT INTO cards (title, description, column_key, position, due_date, created_by) VALUES (?, ?, ?, ?, ?, ?)'
+          'INSERT INTO cards (title, description, column_key, position, due_date, created_by, assigned_to) VALUES (?, ?, ?, ?, ?, ?, ?)'
         )
-        .run(title, str(req.body.description, 10000), column, max + 1, validDate(req.body.dueDate), req.user.id)
+        .run(
+          title,
+          str(req.body.description, 10000),
+          column,
+          max + 1,
+          validDate(req.body.dueDate),
+          req.user.id,
+          validAssignee(req.body.assignedTo)
+        )
         .lastInsertRowid;
       setLinks(id, req.body.links);
       setTags(id, req.body.tags);
@@ -427,6 +442,21 @@ app.post(
       const upd = db.prepare('UPDATE cards SET position = ? WHERE id = ? AND column_key = ?');
       order.forEach((id, i) => upd.run(i + 1, id, column));
     });
+    broadcast();
+    return { ok: true };
+  })
+);
+
+// Zuständig setzen: Admin, Ersteller*in und die aktuell zuständige Person dürfen den Ball weiterspielen
+app.post(
+  '/api/cards/:id/assignee',
+  auth,
+  wrap((req) => {
+    const card = getCard(req.params.id);
+    if (!req.user.isAdmin && card.created_by !== req.user.id && card.assigned_to !== req.user.id)
+      fail(403, 'Zuständigkeit ändern dürfen Admin, Ersteller*in und die zuständige Person.');
+    const assignee = validAssignee(req.body.userId);
+    db.prepare(`UPDATE cards SET assigned_to = ?, updated_at = datetime('now') WHERE id = ?`).run(assignee, card.id);
     broadcast();
     return { ok: true };
   })

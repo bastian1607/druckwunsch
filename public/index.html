@@ -36,8 +36,9 @@
       <div class="brand">🖨️ <span>Druckwünsche</span></div>
       <div class="filters">
         <input id="f-search" type="search" placeholder="Suchen…" aria-label="Suchen">
-        <select id="f-user" aria-label="Nach Person filtern"><option value="">Alle Personen</option></select>
-        <select id="f-tag" aria-label="Nach Tag filtern"><option value="">Alle Tags</option></select>
+        <select id="f-user" aria-label="Nach Ersteller filtern"><option value="">Von: alle</option></select>
+        <select id="f-assignee" aria-label="Nach Zuständigen filtern"><option value="">Zuständig: alle</option></select>
+        <select id="f-tag" aria-label="Nach Tag filtern"><option value="">Tags: alle</option></select>
       </div>
       <div class="top-actions">
         <button id="btn-new" class="btn primary">+ Wunsch</button>
@@ -66,9 +67,14 @@
         <span class="field-label">Status <span id="card-status-hint" class="muted"></span></span>
         <div id="card-status" class="status-picker" role="radiogroup" aria-label="Status"></div>
       </div>
-      <label>Gewünscht bis
-        <input type="date" name="dueDate" class="date-input">
-      </label>
+      <div class="grid2">
+        <label>Zuständig <span class="muted" id="card-assignee-hint"></span>
+          <select id="card-assignee"></select>
+        </label>
+        <label>Gewünscht bis
+          <input type="date" name="dueDate">
+        </label>
+      </div>
       <label>Beschreibung
         <textarea name="description" rows="4" placeholder="Farbe, Größe, Material, Anzahl, wofür …" maxlength="10000"></textarea>
       </label>

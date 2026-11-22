@@ -2,6 +2,7 @@
 
 Kanban-Board für 3D-Druck-Wünsche der Familie, mit den Spalten **Zurückgestellt · Wünsche · In Bearbeitung · Fertig**.
 
+- **Zuständig** pro Karte: zeigt, bei wem der Ball gerade liegt (z. B. „wartet auf Mias Farbwunsch“). Umstellen dürfen Admin, Ersteller*in und die zuständige Person selbst. Eigene Karten sind farbig markiert („Bei dir“), Filter „Wartet auf mich“.
 - Karten zeigen, wer den Wunsch eingestellt hat, außerdem Tags, Links (Printables, MakerWorld, Thingiverse …), einen Wunschtermin und Kommentare
 - Verschieben per Drag & Drop (auf dem Handy: Karte kurz gedrückt halten und an den Rand ziehen) oder per Tipp auf die Status-Knöpfe in der Karte
 - Live-Aktualisierung: Änderungen erscheinen bei allen sofort

@@ -157,6 +157,11 @@ label > input, label > select, label > textarea { margin-top: .25rem; color: var
 .card-foot .who { display: flex; align-items: center; gap: .35rem; margin-right: auto; min-width: 0; }
 .card-foot .who span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .due.over { color: var(--danger); font-weight: 600; }
+.assignee { display: inline-flex; align-items: center; gap: .3rem; padding-left: .45rem; border-left: 1px solid var(--border); }
+.assignee .avatar { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--muted); }
+.assignee.me { color: var(--c-wishes); font-weight: 700; }
+.assignee.me .avatar { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--c-wishes); }
+.card.mine { background: linear-gradient(0deg, color-mix(in srgb, var(--c-wishes) 9%, var(--surface)), color-mix(in srgb, var(--c-wishes) 9%, var(--surface))); }
 .sortable-ghost { opacity: .35; }
 .sortable-chosen { box-shadow: 0 8px 20px rgba(0,0,0,.2); }
 
@@ -224,7 +229,9 @@ label > input, label > select, label > textarea { margin-top: .25rem; color: var
 /* Mobil: Spalten nebeneinander wischen */
 @media (max-width: 760px) {
   .brand span { display: none; }
-  .filters { order: 3; flex-basis: 100%; }
+  .filters { order: 3; flex-basis: 100%; flex-wrap: wrap; }
+  .filters input { flex: 1 1 100%; }
+  .filters select { flex: 1 1 30%; font-size: 14px; padding: .45rem .4rem; }
   .board {
     grid-template-columns: repeat(4, 86vw); scroll-snap-type: x mandatory; gap: 10px;
     min-height: calc(100vh - 110px);
