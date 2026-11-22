@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#4f46e5">
+  <title>Druckwünsche</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖨️</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Login / Setup -->
+  <main id="auth" class="auth hidden">
+    <div class="auth-box">
+      <div class="logo">🖨️</div>
+      <h1>Druckwünsche</h1>
+      <form id="setup-form" class="hidden">
+        <p class="muted">Erster Start: Lege dich als Admin an.</p>
+        <label>Dein Name<input name="name" required maxlength="40" autocomplete="name"></label>
+        <label>PIN (4–8 Ziffern)<input name="pin" required inputmode="numeric" pattern="\d{4,8}" type="password" autocomplete="new-password"></label>
+        <button class="btn primary" type="submit">Loslegen</button>
+      </form>
+      <form id="login-form" class="hidden">
+        <p class="muted">Wer bist du?</p>
+        <div id="login-users" class="user-picker"></div>
+        <label>PIN<input name="pin" required inputmode="numeric" type="password" autocomplete="current-password"></label>
+        <button class="btn primary" type="submit">Anmelden</button>
+      </form>
+      <p id="auth-error" class="error"></p>
+    </div>
+  </main>
+
+  <!-- Board -->
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div class="brand">🖨️ <span>Druckwünsche</span></div>
+      <div class="filters">
+        <input id="f-search" type="search" placeholder="Suchen…" aria-label="Suchen">
+        <select id="f-user" aria-label="Nach Person filtern"><option value="">Alle Personen</option></select>
+        <select id="f-tag" aria-label="Nach Tag filtern"><option value="">Alle Tags</option></select>
+      </div>
+      <div class="top-actions">
+        <button id="btn-new" class="btn primary">+ Wunsch</button>
+        <button id="btn-menu" class="avatar-btn" aria-label="Menü"></button>
+      </div>
+    </header>
+    <div id="menu" class="menu hidden">
+      <div id="menu-name" class="menu-head"></div>
+      <button data-action="pin">PIN ändern</button>
+      <button data-action="admin" class="admin-only">Familie &amp; Tags verwalten</button>
+      <button data-action="logout">Abmelden</button>
+      <div class="menu-foot" id="menu-version"></div>
+    </div>
+    <main id="board" class="board"></main>
+  </div>
+
+  <!-- Karten-Dialog -->
+  <dialog id="card-dialog" class="dialog">
+    <form id="card-form" method="dialog">
+      <div class="dialog-head">
+        <input name="title" class="title-input" placeholder="Was soll gedruckt werden?" maxlength="200" required>
+        <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
+      </div>
+      <div class="meta" id="card-meta"></div>
+      <div class="grid2">
+        <label>Status
+          <select name="columnKey" id="card-status"></select>
+        </label>
+        <label>Gewünscht bis
+          <input type="date" name="dueDate">
+        </label>
+      </div>
+      <label>Beschreibung
+        <textarea name="description" rows="4" placeholder="Farbe, Größe, Material, Anzahl, wofür …" maxlength="10000"></textarea>
+      </label>
+      <div class="field">
+        <span class="field-label">Links</span>
+        <ul id="link-list" class="link-list"></ul>
+        <div class="row">
+          <input id="link-input" type="url" placeholder="https://www.printables.com/…" inputmode="url">
+          <button type="button" class="btn" id="link-add">Hinzufügen</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="field-label">Tags</span>
+        <div id="tag-picker" class="tag-picker"></div>
+        <div class="row">
+          <input id="tag-new-name" placeholder="Neuer Tag" maxlength="30">
+          <input id="tag-new-color" type="color" value="#0ea5e9" aria-label="Farbe">
+          <button type="button" class="btn" id="tag-add">Anlegen</button>
+        </div>
+      </div>
+      <p id="card-error" class="error"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn danger" id="card-delete">Löschen</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Abbrechen</button>
+        <button type="submit" class="btn primary" id="card-save">Speichern</button>
+      </div>
+      <section id="comments" class="comments">
+        <h3>Kommentare</h3>
+        <ul id="comment-list"></ul>
+        <div class="row">
+          <textarea id="comment-input" rows="2" placeholder="Kommentar schreiben…" maxlength="4000"></textarea>
+          <button type="button" class="btn" id="comment-add">Senden</button>
+        </div>
+      </section>
+    </form>
+  </dialog>
+
+  <!-- Admin-Dialog -->
+  <dialog id="admin-dialog" class="dialog">
+    <div class="dialog-head">
+      <h2>Familie &amp; Tags</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
+    </div>
+    <h3>Personen</h3>
+    <ul id="user-list" class="admin-list"></ul>
+    <form id="user-add" class="row wrap">
+      <input name="name" placeholder="Name" required maxlength="40">
+      <input name="pin" placeholder="PIN" required inputmode="numeric" pattern="\d{4,8}">
+      <input name="color" type="color" value="#ec4899" aria-label="Farbe">
+      <label class="check"><input type="checkbox" name="isAdmin"> Admin</label>
+      <button class="btn primary" type="submit">Hinzufügen</button>
+    </form>
+    <h3>Tags</h3>
+    <ul id="tag-list" class="admin-list"></ul>
+    <p id="admin-error" class="error"></p>
+  </dialog>
+
+  <!-- PIN-Dialog -->
+  <dialog id="pin-dialog" class="dialog small">
+    <form id="pin-form" method="dialog">
+      <div class="dialog-head"><h2>PIN ändern</h2><button type="button" class="icon-btn" data-close>✕</button></div>
+      <label>Alte PIN<input name="oldPin" type="password" inputmode="numeric" required></label>
+      <label>Neue PIN<input name="newPin" type="password" inputmode="numeric" pattern="\d{4,8}" required></label>
+      <p id="pin-error" class="error"></p>
+      <div class="dialog-actions"><span class="spacer"></span><button class="btn primary" type="submit">Speichern</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="vendor/Sortable.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

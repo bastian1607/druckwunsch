@@ -1,0 +1,16 @@
+{
+  "name": "druckwunsch",
+  "version": "1.0.0",
+  "description": "Kanban-Board für 3D-Druck-Wünsche der Familie",
+  "main": "server.js",
+  "type": "commonjs",
+  "private": true,
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "sortablejs": "^1.15.6"
+  }
+}
