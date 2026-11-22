@@ -16,14 +16,14 @@
       <h1>Druckwünsche</h1>
       <form id="setup-form" class="hidden">
         <p class="muted">Erster Start: Lege dich als Admin an.</p>
-        <label>Dein Name<input name="name" required maxlength="40" autocomplete="name"></label>
-        <label>PIN (4–8 Ziffern)<input name="pin" required inputmode="numeric" pattern="\d{4,8}" type="password" autocomplete="new-password"></label>
+        <label id="setup-token-wrap">Einrichtungs-Code (wurde bei der Installation angezeigt)<input name="setupToken" autocomplete="off" spellcheck="false"></label>
+        <label>Dein Name<input name="name" required maxlength="40" autocomplete="username"></label>
+        <label>PIN oder Passwort (mind. 6 Zeichen)<input name="pin" required minlength="6" maxlength="64" type="password" autocomplete="new-password"></label>
         <button class="btn primary" type="submit">Loslegen</button>
       </form>
       <form id="login-form" class="hidden">
-        <p class="muted">Wer bist du?</p>
-        <div id="login-users" class="user-picker"></div>
-        <label>PIN<input name="pin" required inputmode="numeric" type="password" autocomplete="current-password"></label>
+        <label>Name<input name="name" required maxlength="40" autocomplete="username" autocapitalize="words"></label>
+        <label>PIN / Passwort<input name="pin" required type="password" autocomplete="current-password"></label>
         <button class="btn primary" type="submit">Anmelden</button>
       </form>
       <p id="auth-error" class="error"></p>
@@ -118,7 +118,7 @@
     <ul id="user-list" class="admin-list"></ul>
     <form id="user-add" class="row wrap">
       <input name="name" placeholder="Name" required maxlength="40">
-      <input name="pin" placeholder="PIN" required inputmode="numeric" pattern="\d{4,8}">
+      <input name="pin" placeholder="PIN (mind. 6 Zeichen)" required minlength="6" maxlength="64" autocomplete="off">
       <input name="color" type="color" value="#ec4899" aria-label="Farbe">
       <label class="check"><input type="checkbox" name="isAdmin"> Admin</label>
       <button class="btn primary" type="submit">Hinzufügen</button>
@@ -132,8 +132,8 @@
   <dialog id="pin-dialog" class="dialog small">
     <form id="pin-form" method="dialog">
       <div class="dialog-head"><h2>PIN ändern</h2><button type="button" class="icon-btn" data-close>✕</button></div>
-      <label>Alte PIN<input name="oldPin" type="password" inputmode="numeric" required></label>
-      <label>Neue PIN<input name="newPin" type="password" inputmode="numeric" pattern="\d{4,8}" required></label>
+      <label>Alte PIN<input name="oldPin" type="password" required autocomplete="current-password"></label>
+      <label>Neue PIN (mind. 6 Zeichen)<input name="newPin" type="password" minlength="6" maxlength="64" required autocomplete="new-password"></label>
       <p id="pin-error" class="error"></p>
       <div class="dialog-actions"><span class="spacer"></span><button class="btn primary" type="submit">Speichern</button></div>
     </form>

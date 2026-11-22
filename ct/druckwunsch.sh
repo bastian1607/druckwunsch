@@ -147,5 +147,9 @@ echo
 msg_ok "${APP} wurde erfolgreich installiert!"
 echo -e "   ${BOLD}Aufrufen:${CL}  ${BL}${URL}${CL}"
 echo -e "   ${BOLD}Update:${CL}    im Container (pct enter ${CTID}) einfach ${GN}update${CL} eingeben"
-echo -e "   Beim ersten Aufruf legst du dich selbst als Admin an."
+TOKEN=$(pct exec "$CTID" -- bash -c '. /etc/default/druckwunsch; echo "$SETUP_TOKEN"')
+echo -e "   ${BOLD}Einrichtungs-Code:${CL} ${GN}${TOKEN}${CL}"
+echo -e "   Beim ersten Aufruf legst du dich mit diesem Code als Admin an."
+echo -e "   Später nachlesen: pct exec ${CTID} -- grep SETUP_TOKEN /etc/default/druckwunsch"
+echo -e "   ${YW}Erst den Admin anlegen, DANN die App ins Internet freigeben (siehe README).${CL}"
 echo

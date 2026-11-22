@@ -8,6 +8,10 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const COOKIE = 'dw_session';
 const VERSION = require('./package.json').version;
+// Einmal-Code für die Ersteinrichtung (wird vom Installer gesetzt). Ohne Code: Setup offen (nur für lokale Entwicklung).
+const SETUP_TOKEN = process.env.SETUP_TOKEN || '';
+// Welchen Proxys wir X-Forwarded-For/-Proto glauben. Standard: lokale/private Netze (z. B. Nginx Proxy Manager im LAN).
+const TRUST_PROXY = process.env.TRUST_PROXY || 'loopback, linklocal, uniquelocal';
 
 const COLUMNS = [
   { key: 'backlog', title: 'Zurückgestellt' },
@@ -29,6 +33,7 @@ function verifyPin(pin, stored) {
   const test = crypto.scryptSync(String(pin), salt, 32);
   return crypto.timingSafeEqual(test, Buffer.from(hash, 'hex'));
 }
+const DUMMY_HASH = hashPin(crypto.randomBytes(8).toString('hex'));
 function parseCookies(req) {
   const out = {};
   for (const part of (req.headers.cookie || '').split(';')) {
@@ -40,8 +45,9 @@ function parseCookies(req) {
 function str(v, max) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
 }
+const PIN_HINT = 'PIN/Passwort muss mindestens 6 Zeichen haben.';
 function validPin(pin) {
-  return typeof pin === 'string' && /^\d{4,8}$/.test(pin);
+  return typeof pin === 'string' && pin.length >= 6 && pin.length <= 64;
 }
 function validColor(c) {
   return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c);
@@ -80,28 +86,52 @@ setInterval(() => {
 }, 25000).unref();
 
 // ---------- Brute-Force-Schutz fürs Login ----------
-const attempts = new Map();
-function checkRate(ip) {
-  const now = Date.now();
-  const a = attempts.get(ip) || { n: 0, t: now };
-  if (now - a.t > 15 * 60 * 1000) {
-    a.n = 0;
-    a.t = now;
+// Zwei Zähler: pro IP (gegen Durchprobieren vieler Namen) und pro Benutzer
+// (gegen verteilte Angriffe von vielen IPs auf eine Person).
+const LOCK_MS = 15 * 60 * 1000;
+const ipFails = new Map();
+const userFails = new Map();
+function isLocked(map, key, max) {
+  const a = map.get(key);
+  if (!a) return false;
+  if (Date.now() - a.t > LOCK_MS) {
+    map.delete(key);
+    return false;
   }
-  if (a.n >= 10) fail(429, 'Zu viele Fehlversuche. Bitte 15 Minuten warten.');
-  return a;
+  return a.n >= max;
 }
+function addFail(map, key) {
+  const a = map.get(key);
+  if (!a || Date.now() - a.t > LOCK_MS) map.set(key, { n: 1, t: Date.now() });
+  else a.n++;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const m of [ipFails, userFails]) for (const [k, a] of m) if (now - a.t > LOCK_MS) m.delete(k);
+}, LOCK_MS).unref();
 
 // ---------- App ----------
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', 'loopback');
-app.use(express.json({ limit: '200kb' }));
+app.set('trust proxy', /^\d+$/.test(TRUST_PROXY) ? Number(TRUST_PROXY) : TRUST_PROXY.split(',').map((x) => x.trim()));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; " +
+      "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+  );
   next();
 });
+// CSRF-Schutz: Schreibende API-Aufrufe nur als JSON (erzwingt bei fremden Seiten einen CORS-Preflight, den wir nie erlauben)
+app.use('/api', (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !req.is('application/json'))
+    return res.status(415).json({ error: 'Nur JSON erlaubt.' });
+  next();
+});
+app.use(express.json({ limit: '200kb' }));
 
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 app.get('/vendor/Sortable.min.js', (req, res) =>
@@ -137,24 +167,30 @@ const auth = (req, res, next) => (req.user ? next() : next(new HttpError(401, 'B
 const admin = (req, res, next) =>
   req.user?.isAdmin ? next() : next(new HttpError(403, 'Nur für Admins.'));
 
-function createSession(res, userId) {
+function cookieFlags(req) {
+  return `Path=/; HttpOnly; SameSite=Lax${req.secure ? '; Secure' : ''}`;
+}
+function createSession(req, res, userId) {
   const token = crypto.randomBytes(32).toString('hex');
   db.prepare('INSERT INTO sessions (token, user_id) VALUES (?, ?)').run(token, userId);
-  res.setHeader(
-    'Set-Cookie',
-    `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
-  );
+  // alte Sitzungen nach 180 Tagen aufräumen
+  db.prepare(`DELETE FROM sessions WHERE created_at < datetime('now', '-180 days')`).run();
+  res.setHeader('Set-Cookie', `${COOKIE}=${token}; ${cookieFlags(req)}; Max-Age=${60 * 60 * 24 * 180}`);
 }
 
 // --- Status / Setup / Login ---
 app.get(
   '/api/state',
-  wrap((req) => ({
-    version: VERSION,
-    setupRequired: db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0,
-    user: req.user,
-    users: db.prepare('SELECT id, name, color FROM users ORDER BY name').all(),
-  }))
+  wrap((req) => {
+    const setupRequired = db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0;
+    // Versionsnummer und Namen nur für angemeldete Personen – nichts über die Familie nach außen geben
+    return {
+      setupRequired,
+      setupTokenRequired: setupRequired && !!SETUP_TOKEN,
+      user: req.user,
+      version: req.user ? VERSION : undefined,
+    };
+  })
 );
 
 app.post(
@@ -163,14 +199,22 @@ app.post(
     const name = str(req.body.name, 40);
     const pin = req.body.pin;
     if (!name) fail(400, 'Name fehlt.');
-    if (!validPin(pin)) fail(400, 'PIN muss 4–8 Ziffern haben.');
+    if (!validPin(pin)) fail(400, PIN_HINT);
+    if (SETUP_TOKEN) {
+      const given = Buffer.from(String(req.body.setupToken || ''));
+      const want = Buffer.from(SETUP_TOKEN);
+      if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) {
+        addFail(ipFails, req.ip);
+        fail(403, 'Einrichtungs-Code falsch. Er wurde bei der Installation angezeigt.');
+      }
+    }
     const id = tx(() => {
       if (db.prepare('SELECT COUNT(*) AS n FROM users').get().n > 0) fail(409, 'Setup bereits erledigt.');
       return db
         .prepare('INSERT INTO users (name, pin_hash, is_admin, color) VALUES (?, ?, 1, ?)')
         .run(name, hashPin(pin), USER_COLORS[0]).lastInsertRowid;
     });
-    createSession(res, id);
+    createSession(req, res, id);
     return { ok: true };
   })
 );
@@ -178,15 +222,20 @@ app.post(
 app.post(
   '/api/login',
   wrap((req, res) => {
-    const a = checkRate(req.ip);
-    const u = db.prepare('SELECT id, pin_hash FROM users WHERE id = ?').get(Number(req.body.userId));
-    if (!u || typeof req.body.pin !== 'string' || !verifyPin(req.body.pin, u.pin_hash)) {
-      a.n++;
-      attempts.set(req.ip, a);
-      fail(401, 'PIN falsch.');
+    const name = str(req.body.name, 40);
+    const userKey = name.toLowerCase();
+    if (isLocked(ipFails, req.ip, 20) || isLocked(userFails, userKey, 5))
+      fail(429, 'Zu viele Fehlversuche. Bitte 15 Minuten warten.');
+    const u = db.prepare('SELECT id, pin_hash FROM users WHERE name = ?').get(name);
+    // Bei unbekanntem Namen trotzdem rechnen, damit die Antwortzeit nichts verrät
+    const ok = verifyPin(typeof req.body.pin === 'string' ? req.body.pin : '', u ? u.pin_hash : DUMMY_HASH);
+    if (!u || !ok) {
+      addFail(ipFails, req.ip);
+      addFail(userFails, userKey);
+      fail(401, 'Name oder PIN falsch.');
     }
-    attempts.delete(req.ip);
-    createSession(res, u.id);
+    userFails.delete(userKey);
+    createSession(req, res, u.id);
     return { ok: true };
   })
 );
@@ -196,7 +245,7 @@ app.post(
   wrap((req, res) => {
     const token = parseCookies(req)[COOKIE];
     if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
-    res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+    res.setHeader('Set-Cookie', `${COOKIE}=; ${cookieFlags(req)}; Max-Age=0`);
     return { ok: true };
   })
 );
@@ -207,7 +256,7 @@ app.post(
   wrap((req) => {
     const u = db.prepare('SELECT pin_hash FROM users WHERE id = ?').get(req.user.id);
     if (!verifyPin(String(req.body.oldPin || ''), u.pin_hash)) fail(400, 'Alte PIN falsch.');
-    if (!validPin(req.body.newPin)) fail(400, 'Neue PIN muss 4–8 Ziffern haben.');
+    if (!validPin(req.body.newPin)) fail(400, PIN_HINT);
     db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(hashPin(req.body.newPin), req.user.id);
     return { ok: true };
   })
@@ -473,7 +522,7 @@ app.post(
   wrap((req) => {
     const name = str(req.body.name, 40);
     if (!name) fail(400, 'Name fehlt.');
-    if (!validPin(req.body.pin)) fail(400, 'PIN muss 4–8 Ziffern haben.');
+    if (!validPin(req.body.pin)) fail(400, PIN_HINT);
     const n = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
     try {
       db.prepare('INSERT INTO users (name, pin_hash, is_admin, color) VALUES (?, ?, ?, ?)').run(
@@ -510,7 +559,7 @@ app.patch(
       if (req.body.color !== undefined && validColor(req.body.color))
         db.prepare('UPDATE users SET color = ? WHERE id = ?').run(req.body.color, id);
       if (req.body.pin !== undefined && req.body.pin !== '') {
-        if (!validPin(req.body.pin)) fail(400, 'PIN muss 4–8 Ziffern haben.');
+        if (!validPin(req.body.pin)) fail(400, PIN_HINT);
         db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(hashPin(req.body.pin), id);
         db.prepare('DELETE FROM sessions WHERE user_id = ? AND user_id != ?').run(id, req.user.id);
       }
@@ -543,4 +592,8 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err instanceof HttpError ? err.message : 'Interner Fehler.' });
 });
 
-app.listen(PORT, HOST, () => console.log(`Druckwunsch v${VERSION} läuft auf http://${HOST}:${PORT}`));
+app.listen(PORT, HOST, () => {
+  console.log(`Druckwunsch v${VERSION} läuft auf http://${HOST}:${PORT}`);
+  if (!SETUP_TOKEN && db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0)
+    console.warn('WARNUNG: Kein SETUP_TOKEN gesetzt – jeder, der die Seite zuerst aufruft, kann Admin werden.');
+});

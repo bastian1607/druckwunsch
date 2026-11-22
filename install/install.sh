@@ -46,13 +46,22 @@ chmod +x "$APP_DIR"/install/*.sh
 msg_ok "Druckwunsch installiert ($(git rev-parse --short HEAD))"
 
 msg_info "Richte Dienst ein"
+# Einmal-Code für die Ersteinrichtung (bleibt bei erneutem Lauf erhalten)
+SETUP_TOKEN=$(. /etc/default/druckwunsch 2>/dev/null; echo "${SETUP_TOKEN:-}")
+[[ -n "$SETUP_TOKEN" ]] || SETUP_TOKEN=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')
 cat >/etc/default/druckwunsch <<EOF
 # Konfiguration für Druckwunsch – nach Änderung: systemctl restart druckwunsch
 PORT=${PORT}
 HOST=0.0.0.0
 DATA_DIR=${DATA_DIR}
 NODE_ENV=production
+# Code, den man beim allerersten Aufruf eingeben muss, um Admin zu werden
+SETUP_TOKEN=${SETUP_TOKEN}
+# Welchen Reverse-Proxys vertraut wird (X-Forwarded-For/-Proto).
+# Standard: private Netze. Läuft cloudflared im selben Container, reicht: loopback
+TRUST_PROXY="loopback, linklocal, uniquelocal"
 EOF
+chmod 640 /etc/default/druckwunsch
 cat >/etc/systemd/system/druckwunsch.service <<EOF
 [Unit]
 Description=Druckwunsch – 3D-Druck-Wunschboard

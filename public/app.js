@@ -20,8 +20,8 @@
   async function api(method, url, body) {
     const res = await fetch(url, {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : {},
-      body: body ? JSON.stringify(body) : undefined,
+      headers: method !== 'GET' ? { 'Content-Type': 'application/json' } : {},
+      body: method !== 'GET' ? JSON.stringify(body || {}) : undefined,
       credentials: 'same-origin',
     });
     const data = await res.json().catch(() => ({}));
@@ -64,14 +64,15 @@
   // ---------- Auth ----------
   async function init() {
     const st = await api('GET', '/api/state');
-    S.users = st.users;
+    if (st.setupRequired) return showSetup(st.setupTokenRequired);
     $('#menu-version').textContent = `Version ${st.version}`;
-    if (st.setupRequired) return showSetup();
     if (!st.user) return showAuth();
     S.me = st.user;
     showApp();
   }
-  function showSetup() {
+  function showSetup(tokenRequired) {
+    $('#setup-token-wrap').classList.toggle('hidden', !tokenRequired);
+    $('#setup-form').elements.setupToken.required = !!tokenRequired;
     $('#app').classList.add('hidden');
     $('#auth').classList.remove('hidden');
     $('#setup-form').classList.remove('hidden');
@@ -84,22 +85,10 @@
     $('#auth').classList.remove('hidden');
     $('#setup-form').classList.add('hidden');
     $('#login-form').classList.remove('hidden');
-    try {
-      S.users = (await (await fetch('/api/state')).json()).users;
-    } catch {}
-    const box = $('#login-users');
-    box.replaceChildren();
-    const last = localStorageGet('dw_last_user');
-    for (const u of S.users) {
-      const b = h('button', { type: 'button', dataset: { id: u.id } }, avatar(u.name, u.color, 'lg'), h('span', {}, u.name));
-      b.addEventListener('click', () => {
-        box.querySelectorAll('button').forEach((x) => x.classList.toggle('selected', x === b));
-        $('#login-form [name=pin]').focus();
-      });
-      if (String(u.id) === last) b.classList.add('selected');
-      box.append(b);
-    }
-    if (S.users.length === 1) box.firstChild.classList.add('selected');
+    const f = $('#login-form').elements;
+    const last = localStorageGet('dw_last_name');
+    if (last && !f.name.value) f.name.value = last;
+    (f.name.value ? f.pin : f.name).focus();
   }
   function localStorageGet(k) {
     try { return localStorage.getItem(k); } catch { return null; }
@@ -112,7 +101,7 @@
     e.preventDefault();
     const f = new FormData(e.target);
     try {
-      await api('POST', '/api/setup', { name: f.get('name'), pin: f.get('pin') });
+      await api('POST', '/api/setup', { name: f.get('name'), pin: f.get('pin'), setupToken: (f.get('setupToken') || '').trim() });
       $('#auth-error').textContent = '';
       init();
     } catch (err) {
@@ -121,12 +110,11 @@
   });
   $('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const sel = $('#login-users .selected');
-    if (!sel) return ($('#auth-error').textContent = 'Bitte wähle deinen Namen.');
+    const f = e.target.elements;
     try {
-      await api('POST', '/api/login', { userId: Number(sel.dataset.id), pin: e.target.elements.pin.value });
-      localStorageSet('dw_last_user', sel.dataset.id);
-      e.target.reset();
+      await api('POST', '/api/login', { name: f.name.value.trim(), pin: f.pin.value });
+      localStorageSet('dw_last_name', f.name.value.trim());
+      f.pin.value = '';
       $('#auth-error').textContent = '';
       init();
     } catch (err) {
@@ -535,7 +523,7 @@
           h('span', { class: 'name' }, u.name, ' ', u.isAdmin ? h('span', { class: 'badge' }, 'Admin') : ''),
           h('label', { class: 'check' }, adm, 'Admin'),
           h('button', { class: 'btn', type: 'button', onclick: () => {
-            const pin = prompt(`Neue PIN für ${u.name} (4–8 Ziffern):`);
+            const pin = prompt(`Neue PIN für ${u.name} (mind. 6 Zeichen):`);
             if (pin) api('PATCH', `/api/users/${u.id}`, { pin }).then(() => toast('PIN gesetzt.'), err);
           } }, 'PIN'),
           u.id !== S.me.id &&
