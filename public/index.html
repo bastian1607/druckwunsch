@@ -89,6 +89,16 @@
       <label>Beschreibung
         <textarea name="description" rows="4" placeholder="Farbe, Größe, Material, Anzahl, wofür …" maxlength="10000"></textarea>
       </label>
+      <div class="field" id="cover-field">
+        <span class="field-label">Titelbild <span class="muted" id="cover-hint"></span></span>
+        <div class="cover-row">
+          <div class="cover-box" id="cover-box"><span class="muted">Kein eigenes Bild</span></div>
+          <div class="cover-actions">
+            <label class="btn" id="cover-pick">📷 Bild wählen<input type="file" id="cover-input" accept="image/*" class="hidden"></label>
+            <button type="button" class="btn danger" id="cover-remove">Entfernen</button>
+          </div>
+        </div>
+      </div>
       <div class="field">
         <span class="field-label">Links <button type="button" class="link-btn hidden" id="link-refresh">↻ Vorschau neu laden</button></span>
         <ul id="link-list" class="link-list"></ul>

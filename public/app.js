@@ -356,6 +356,7 @@
     renderStatus();
     renderAssignee();
     renderPrivate();
+    renderCover();
 
     for (const el of [F.title, F.description, F.dueDate, $('#link-input'), $('#link-add'), $('#tag-new-name'), $('#tag-new-color'), $('#tag-add')])
       el.disabled = !editable;
@@ -460,6 +461,96 @@
       $('#card-error').textContent = err.message;
       renderAssignee();
     }
+  });
+
+  // ---------- Eigenes Titelbild ----------
+  // Bild im Browser verkleinern (max. 1600 px) und als JPEG neu kodieren:
+  // spart Speicher und entfernt nebenbei Metadaten wie den GPS-Standort von Handyfotos.
+  async function prepareImage(file) {
+    if (!file || !file.type.startsWith('image/')) throw new Error('Das ist kein Bild.');
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close?.();
+    return new Promise((res, rej) =>
+      canvas.toBlob((b) => (b ? res(b) : rej(new Error('Bild konnte nicht verarbeitet werden.'))), 'image/jpeg', 0.85)
+    );
+  }
+  async function uploadCover(cardId, blob) {
+    const r = await fetch(`/api/cards/${cardId}/cover`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: blob,
+      credentials: 'same-origin',
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Fehler ${r.status}`);
+  }
+  let pendingUrl = null;
+  function renderCover() {
+    const c = S.card;
+    const box = $('#cover-box');
+    if (pendingUrl) {
+      URL.revokeObjectURL(pendingUrl);
+      pendingUrl = null;
+    }
+    const src = c.pendingCover ? (pendingUrl = URL.createObjectURL(c.pendingCover)) : c.ownCover;
+    box.replaceChildren(src ? h('img', { src, alt: 'Titelbild' }) : h('span', { class: 'muted' }, 'Kein eigenes Bild'));
+    $('#cover-pick').classList.toggle('hidden', !c.editable);
+    $('#cover-remove').classList.toggle('hidden', !c.editable || !src);
+    $('#cover-hint').textContent = c.editable ? '– Foto wählen oder Screenshot mit Strg+V einfügen' : '';
+    $('#cover-field').classList.toggle('hidden', !c.editable && !src);
+  }
+  async function setCover(file) {
+    const c = S.card;
+    if (!c.editable) return;
+    try {
+      const blob = await prepareImage(file);
+      if (!c.id) {
+        c.pendingCover = blob; // wird nach dem Anlegen hochgeladen
+      } else {
+        await uploadCover(c.id, blob);
+        c.ownCover = `/api/covers/${c.id}?v=${Date.now()}`;
+        toast('Titelbild gespeichert');
+        loadBoard();
+      }
+      renderCover();
+    } catch (err) {
+      $('#card-error').textContent = err.message;
+    }
+  }
+  $('#cover-input').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (f) setCover(f);
+  });
+  $('#cover-remove').addEventListener('click', async () => {
+    const c = S.card;
+    if (!c.id) {
+      c.pendingCover = null;
+      return renderCover();
+    }
+    try {
+      await api('DELETE', `/api/cards/${c.id}/cover`);
+      c.ownCover = null;
+      renderCover();
+      loadBoard();
+    } catch (err) {
+      $('#card-error').textContent = err.message;
+    }
+  });
+  // Screenshot direkt einfügen (Strg+V / Cmd+V), solange der Kartendialog offen ist
+  document.addEventListener('paste', (e) => {
+    if (!$('#card-dialog').open || !S.card?.editable) return;
+    const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'));
+    if (!item) return;
+    e.preventDefault();
+    setCover(item.getAsFile());
   });
 
   // ---------- Privat (nur Admins schalten) ----------
@@ -594,8 +685,10 @@
       tags: c.tags,
     };
     try {
-      if (!c.id) await api('POST', '/api/cards', { ...payload, columnKey: c.columnKey, assignedTo: c.assignedTo || null, isPrivate: !!c.isPrivate });
-      else if (c.editable) await api('PATCH', `/api/cards/${c.id}`, payload);
+      if (!c.id) {
+        const r = await api('POST', '/api/cards', { ...payload, columnKey: c.columnKey, assignedTo: c.assignedTo || null, isPrivate: !!c.isPrivate });
+        if (c.pendingCover) await uploadCover(r.id, c.pendingCover).catch((e) => toast(`Bild: ${e.message}`));
+      } else if (c.editable) await api('PATCH', `/api/cards/${c.id}`, payload);
       $('#card-dialog').close();
       loadBoard();
     } catch (err) {

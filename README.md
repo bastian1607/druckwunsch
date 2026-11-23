@@ -9,6 +9,7 @@ Kanban-Board für 3D-Druck-Wünsche der Familie, mit den Spalten **Zurückgestel
 - Anmeldung per Name + PIN/Passwort (mind. 6 Zeichen). Admin wird nur, wer den Einrichtungs-Code aus der Installation kennt.
 - Rechte: Familienmitglieder legen Wünsche an, bearbeiten ihre eigenen und können sie zwischen *Wünsche* und *Zurückgestellt* verschieben. Nur Admins setzen *In Bearbeitung* / *Fertig* und legen die Reihenfolge fest.
 - **Link-Vorschau:** Zu jedem Link holt der Server Titel und Vorschaubild der Seite (`og:image`). Das erste Bild erscheint als Titelbild auf der Karte. Die Bilder werden lokal gespeichert, die Familie lädt nichts direkt von fremden Seiten.
+- **Eigenes Titelbild:** Foto oder Screenshot wählen bzw. am PC mit Strg+V einfügen. Das hilft bei Seiten wie MakerWorld, die automatische Vorschauen blockieren. Bilder werden im Browser verkleinert, Metadaten wie der GPS-Standort von Handyfotos werden dabei entfernt.
 - **Private Karten** (Admin-Funktion): Inhalt sehen nur Admins, Ersteller*in und die zuständige Person. Alle anderen sehen nur eine graue „🔒 Privat“-Karte. Das wird serverseitig durchgesetzt.
 - Hell/Dunkel nach Systemeinstellung, auf dem Handy gut bedienbar
 - Eigenes App-Icon. Auf dem Handy über *Teilen → Zum Home-Bildschirm* (iPhone) bzw. *⋮ → App installieren* (Android) wie eine eigene App nutzbar

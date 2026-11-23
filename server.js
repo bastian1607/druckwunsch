@@ -4,6 +4,22 @@ const crypto = require('node:crypto');
 const express = require('express');
 const { db, tx } = require('./lib/db');
 const preview = require('./lib/preview');
+const fs = require('node:fs');
+const { DATA_DIR } = require('./lib/db');
+const COVER_DIR = path.join(DATA_DIR, 'covers');
+fs.mkdirSync(COVER_DIR, { recursive: true });
+// Bildtyp anhand der ersten Bytes prüfen – dem Content-Type des Browsers wird nicht vertraut
+function sniffImage(buf) {
+  if (buf.length < 12) return null;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (buf.toString('ascii', 0, 4) === 'GIF8') return 'image/gif';
+  return null;
+}
+function removeCoverFile(file) {
+  if (file && /^[0-9a-f]{32}$/.test(file)) fs.rm(path.join(COVER_DIR, file), { force: true }, () => {});
+}
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -121,14 +137,15 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; " +
+    "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; " +
       "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
   );
   next();
 });
 // CSRF-Schutz: Schreibende API-Aufrufe nur als JSON (erzwingt bei fremden Seiten einen CORS-Preflight, den wir nie erlauben)
 app.use('/api', (req, res, next) => {
-  if (req.method !== 'GET' && req.method !== 'HEAD' && !req.is('application/json'))
+  // Bilder (image/*) lösen bei fremden Seiten ebenfalls einen Preflight aus und sind daher genauso sicher
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !req.is('application/json') && !req.is('image/*'))
     return res.status(415).json({ error: 'Nur JSON erlaubt.' });
   next();
 });
@@ -299,7 +316,7 @@ function loadCards(user, where = '', params = []) {
   const cards = db
     .prepare(
       `SELECT c.id, c.title, c.description, c.column_key AS columnKey, c.position, c.due_date AS dueDate,
-              c.is_private AS isPrivate,
+              c.is_private AS isPrivate, c.cover_file AS coverFile,
               c.created_at AS createdAt, c.updated_at AS updatedAt, c.moved_at AS movedAt,
               c.created_by AS createdBy, u.name AS creatorName, u.color AS creatorColor,
               c.assigned_to AS assignedTo, a.name AS assigneeName, a.color AS assigneeColor,
@@ -329,7 +346,10 @@ function loadCards(user, where = '', params = []) {
   return cards.map((c) => {
     if (!canSee(user, { is_private: c.isPrivate, created_by: c.createdBy, assigned_to: c.assignedTo })) return redact(c);
     // Titelbild: erstes Vorschaubild der Links
-    c.cover = c.links.find((l) => l.image)?.image || null;
+    // eigenes Titelbild hat Vorrang vor der Link-Vorschau
+    c.ownCover = c.coverFile ? `/api/covers/${c.id}?v=${c.coverFile.slice(0, 8)}` : null;
+    c.cover = c.ownCover || c.links.find((l) => l.image)?.image || null;
+    delete c.coverFile;
     return c;
   });
 }
@@ -515,6 +535,50 @@ app.post(
   })
 );
 
+// Eigenes Titelbild (Foto/Screenshot) hochladen, ersetzen oder entfernen
+app.put(
+  '/api/cards/:id/cover',
+  auth,
+  express.raw({ type: 'image/*', limit: '8mb' }),
+  wrap((req) => {
+    const card = getCard(req.params.id, req.user);
+    if (!canEdit(req.user, card)) fail(403, 'Nur Admin und Ersteller*in dürfen das Bild ändern.');
+    const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const type = sniffImage(buf);
+    if (!type) fail(400, 'Bitte ein JPG-, PNG-, WebP- oder GIF-Bild verwenden.');
+    const file = crypto.randomBytes(16).toString('hex');
+    fs.writeFileSync(path.join(COVER_DIR, file), buf);
+    db.prepare(`UPDATE cards SET cover_file = ?, cover_type = ?, updated_at = datetime('now') WHERE id = ?`).run(file, type, card.id);
+    removeCoverFile(card.cover_file);
+    broadcast();
+    return { ok: true };
+  })
+);
+app.delete(
+  '/api/cards/:id/cover',
+  auth,
+  wrap((req) => {
+    const card = getCard(req.params.id, req.user);
+    if (!canEdit(req.user, card)) fail(403, 'Nur Admin und Ersteller*in dürfen das Bild ändern.');
+    db.prepare(`UPDATE cards SET cover_file = NULL, cover_type = NULL WHERE id = ?`).run(card.id);
+    removeCoverFile(card.cover_file);
+    broadcast();
+    return { ok: true };
+  })
+);
+app.get('/api/covers/:id', auth, (req, res, next) => {
+  try {
+    const card = getCard(req.params.id, req.user);
+    if (!card.cover_file) fail(404, 'Kein Bild.');
+    res.setHeader('Content-Type', card.cover_type);
+    res.setHeader('Cache-Control', 'private, max-age=604800');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.sendFile(path.join(COVER_DIR, card.cover_file));
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Vorschau eines Links neu laden
 app.post(
   '/api/cards/:id/previews/refresh',
@@ -555,6 +619,7 @@ app.delete(
     const ownOpen = card.created_by === req.user.id && (card.column_key === 'wishes' || card.column_key === 'backlog');
     if (!req.user.isAdmin && !ownOpen) fail(403, 'Löschen nicht erlaubt.');
     db.prepare('DELETE FROM cards WHERE id = ?').run(card.id);
+    removeCoverFile(card.cover_file);
     broadcast();
     return { ok: true };
   })
