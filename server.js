@@ -151,7 +151,15 @@ app.use('/api', (req, res, next) => {
 });
 app.use(express.json({ limit: '200kb' }));
 
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    maxAge: '1h',
+    // Programmdateien immer neu prüfen (per ETag, kostet kaum etwas) – sonst sieht man nach einem Update bis zu 1 h die alte Oberfläche
+    setHeaders: (res, file) => {
+      if (/\.(html|js|css|webmanifest)$/.test(file)) res.setHeader('Cache-Control', 'no-cache');
+    },
+  })
+);
 app.get('/vendor/Sortable.min.js', (req, res) =>
   res.sendFile(require.resolve('sortablejs/Sortable.min.js'))
 );
