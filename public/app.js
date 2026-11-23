@@ -188,6 +188,17 @@
       const visible = cards.filter(matches);
       const list = h('ul', { class: 'cards', dataset: { key: col.key } });
       for (const c of visible) {
+        if (c.redacted) {
+          list.append(
+            h(
+              'li',
+              { class: 'card locked', dataset: { id: c.id }, onclick: () => toast('Diese Karte ist privat.') },
+              h('div', { class: 'card-title' }, '🔒 Privat'),
+              h('div', { class: 'card-foot' }, 'Der Inhalt ist nur für Berechtigte sichtbar.')
+            )
+          );
+          continue;
+        }
         const canDrag = S.me.isAdmin || (c.createdBy === S.me.id && isOpenCol(c.columnKey));
         const foot = h(
           'div',
@@ -210,8 +221,9 @@
           h(
             'li',
             { class: `card ${canDrag ? 'can-drag' : ''} ${c.assignedTo === S.me.id && col.key !== 'done' ? 'mine' : ''}`, dataset: { id: c.id }, onclick: () => openCard(c.id) },
+            c.cover && h('img', { class: 'cover', src: c.cover, alt: '', loading: 'lazy', decoding: 'async' }),
             tags.length > 0 && h('div', { class: 'tags' }, tags.map(tagEl)),
-            h('div', { class: 'card-title' }, c.title),
+            h('div', { class: 'card-title' }, c.isPrivate && h('span', { class: 'lock', title: 'Privat' }, '🔒 '), c.title),
             foot
           )
         );
@@ -308,7 +320,7 @@
       clearTimeout(reloadT);
       reloadT = setTimeout(() => {
         loadBoard().catch(() => {});
-        if ($('#card-dialog').open && S.card?.id) refreshComments();
+        if ($('#card-dialog').open && S.card?.id) refreshLinkInfo();
       }, 250);
     });
   }
@@ -332,7 +344,8 @@
     } else {
       card = { id: null, title: '', description: '', columnKey, dueDate: null, links: [], tags: [], comments: [], createdBy: S.me.id, assignedTo: null };
     }
-    S.card = { ...card, links: card.links.map((l) => l.url), tags: [...card.tags] };
+    S.card = { ...card, links: card.links.map((l) => l.url), tags: [...card.tags], isPrivate: !!card.isPrivate };
+    S.linkInfo = new Map(card.links.map((l) => [l.url, l]));
     const editable = !card.id || S.me.isAdmin || card.createdBy === S.me.id;
     S.card.editable = editable;
 
@@ -342,6 +355,7 @@
 
     renderStatus();
     renderAssignee();
+    renderPrivate();
 
     for (const el of [F.title, F.description, F.dueDate, $('#link-input'), $('#link-add'), $('#tag-new-name'), $('#tag-new-color'), $('#tag-add')])
       el.disabled = !editable;
@@ -448,19 +462,71 @@
     }
   });
 
+  // ---------- Privat (nur Admins schalten) ----------
+  function renderPrivate() {
+    const c = S.card;
+    const box = $('#card-private');
+    const cb = $('#card-private-cb');
+    cb.checked = !!c.isPrivate;
+    box.classList.toggle('hidden', !S.me.isAdmin && !c.isPrivate);
+    cb.disabled = !S.me.isAdmin;
+    box.classList.toggle('on', !!c.isPrivate);
+  }
+  $('#card-private-cb').addEventListener('change', async (e) => {
+    const c = S.card;
+    const isPrivate = e.target.checked;
+    if (!c.id) return void ((c.isPrivate = isPrivate), renderPrivate());
+    try {
+      await api('POST', `/api/cards/${c.id}/private`, { isPrivate });
+      c.isPrivate = isPrivate;
+      toast(isPrivate ? 'Karte ist jetzt privat' : 'Karte ist wieder für alle sichtbar');
+      loadBoard();
+    } catch (err) {
+      $('#card-error').textContent = err.message;
+    }
+    renderPrivate();
+  });
+
   function renderLinks() {
     const ul = $('#link-list');
     ul.replaceChildren(
       ...S.card.links.map((url, i) => {
         const p = linkParts(url);
+        const info = S.linkInfo?.get(url);
         return h(
           'li',
-          {},
-          h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, h('b', {}, p.host), p.rest),
+          { class: info?.image ? 'has-thumb' : '' },
+          info?.image && h('img', { class: 'thumb', src: info.image, alt: '', loading: 'lazy' }),
+          h(
+            'a',
+            { href: url, target: '_blank', rel: 'noopener noreferrer' },
+            info?.title && h('span', { class: 'link-title' }, info.title),
+            h('span', { class: 'link-url' }, h('b', {}, p.host), p.rest),
+            info?.pending && h('span', { class: 'link-url muted' }, 'Vorschau wird geladen …')
+          ),
           S.card.editable && h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Link entfernen', onclick: () => { S.card.links.splice(i, 1); renderLinks(); } }, '✕')
         );
       })
     );
+    $('#link-refresh').classList.toggle('hidden', !S.card.id || !S.card.editable || !S.card.links.length);
+  }
+  $('#link-refresh').addEventListener('click', async () => {
+    try {
+      await api('POST', `/api/cards/${S.card.id}/previews/refresh`);
+      toast('Vorschau wird neu geladen …');
+      setTimeout(refreshLinkInfo, 4000);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  async function refreshLinkInfo() {
+    if (!$('#card-dialog').open || !S.card?.id) return;
+    try {
+      const c = await api('GET', `/api/cards/${S.card.id}`);
+      S.linkInfo = new Map(c.links.map((l) => [l.url, l]));
+      renderLinks();
+      renderComments(c.comments);
+    } catch {}
   }
   function addLink() {
     const inp = $('#link-input');
@@ -528,7 +594,7 @@
       tags: c.tags,
     };
     try {
-      if (!c.id) await api('POST', '/api/cards', { ...payload, columnKey: c.columnKey, assignedTo: c.assignedTo || null });
+      if (!c.id) await api('POST', '/api/cards', { ...payload, columnKey: c.columnKey, assignedTo: c.assignedTo || null, isPrivate: !!c.isPrivate });
       else if (c.editable) await api('PATCH', `/api/cards/${c.id}`, payload);
       $('#card-dialog').close();
       loadBoard();

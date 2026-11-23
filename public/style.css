@@ -152,6 +152,11 @@ label > input, label > select, label > textarea { margin-top: .25rem; color: var
 .board.is-dragging { scroll-snap-type: none !important; }
 .column[data-key=progress] .card { border-left-color: var(--c-progress); }
 .column[data-key=done] .card { border-left-color: var(--c-done); opacity: .85; }
+.card .cover { display: block; width: calc(100% + 1.5rem); margin: -.65rem -.75rem .55rem; height: 140px; object-fit: cover; border-radius: var(--radius) var(--radius) 0 0; background: var(--surface-2); }
+.card { overflow: hidden; }
+.card.locked { cursor: default; background: var(--surface-2); box-shadow: none; border: 1px dashed var(--border); }
+.card.locked .card-title { color: var(--muted); }
+.card.locked:hover { outline: none; }
 .card .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: .35rem; }
 .card-title { font-weight: 600; word-break: break-word; }
 .card-foot { display: flex; align-items: center; gap: .6rem; margin-top: .5rem; color: var(--muted); font-size: .8rem; }
@@ -206,8 +211,15 @@ label > input, label > select, label > textarea { margin-top: .25rem; color: var
 .dialog-actions { display: flex; gap: .5rem; margin-top: 1rem; align-items: center; }
 .link-list { list-style: none; padding: 0; margin: 0; }
 .link-list li { display: flex; align-items: center; gap: .5rem; padding: .35rem .5rem; background: var(--surface-2); border-radius: 8px; margin-bottom: .3rem; }
-.link-list a { color: var(--primary); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
-.link-list a b { color: var(--text); margin-right: .4rem; }
+.link-list a { color: var(--primary); text-decoration: none; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.link-list .link-title { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-list .link-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; }
+.link-list a b { color: var(--text); margin-right: .4rem; font-weight: 500; }
+.link-list .thumb { width: 64px; height: 48px; object-fit: cover; border-radius: 6px; flex: none; background: var(--surface); }
+.link-btn { background: none; border: 0; color: var(--primary); cursor: pointer; font-size: .8rem; padding: 0 0 0 .5rem; }
+.private-toggle { display: flex; gap: .6rem; align-items: flex-start; margin-top: .9rem; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: .88rem; cursor: pointer; }
+.private-toggle input { margin-top: .2rem; }
+.private-toggle.on { border-color: var(--c-wishes); background: color-mix(in srgb, var(--c-wishes) 10%, var(--surface)); }
 .comments { border-top: 1px solid var(--border); margin-top: 1.2rem; }
 .comments ul { list-style: none; padding: 0; margin: 0; }
 .comments li { display: flex; gap: .6rem; padding: .5rem 0; }

@@ -3,6 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const express = require('express');
 const { db, tx } = require('./lib/db');
+const preview = require('./lib/preview');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -276,10 +277,29 @@ app.get('/api/events', auth, (req, res) => {
 });
 
 // --- Board ---
-function loadCards(where = '', params = []) {
+// Private Karten: lesen dürfen Admins, Ersteller*in und die zuständige Person
+function canSee(user, row) {
+  return !row.is_private || user.isAdmin || row.created_by === user.id || row.assigned_to === user.id;
+}
+function redact(c) {
+  return {
+    id: c.id,
+    columnKey: c.columnKey,
+    position: c.position,
+    isPrivate: true,
+    redacted: true,
+    title: 'Privat',
+    description: '',
+    tags: [],
+    links: [],
+    commentCount: 0,
+  };
+}
+function loadCards(user, where = '', params = []) {
   const cards = db
     .prepare(
       `SELECT c.id, c.title, c.description, c.column_key AS columnKey, c.position, c.due_date AS dueDate,
+              c.is_private AS isPrivate,
               c.created_at AS createdAt, c.updated_at AS updatedAt, c.moved_at AS movedAt,
               c.created_by AS createdBy, u.name AS creatorName, u.color AS creatorColor,
               c.assigned_to AS assignedTo, a.name AS assigneeName, a.color AS assigneeColor,
@@ -289,28 +309,46 @@ function loadCards(where = '', params = []) {
     )
     .all(...params);
   if (!cards.length) return cards;
-  const byId = new Map(cards.map((c) => [c.id, Object.assign(c, { tags: [], links: [] })]));
+  const byId = new Map(cards.map((c) => [c.id, Object.assign(c, { tags: [], links: [], isPrivate: !!c.isPrivate })]));
   for (const t of db.prepare('SELECT card_id, tag_id FROM card_tags').all())
     byId.get(t.card_id)?.tags.push(t.tag_id);
-  for (const l of db.prepare('SELECT id, card_id, url FROM links ORDER BY position, id').all())
-    byId.get(l.card_id)?.links.push({ id: l.id, url: l.url });
-  return cards;
+  const links = db
+    .prepare(
+      `SELECT l.id, l.card_id, l.url, p.status, p.title, p.image_hash AS imageHash
+       FROM links l LEFT JOIN previews p ON p.url = l.url ORDER BY l.position, l.id`
+    )
+    .all();
+  for (const l of links)
+    byId.get(l.card_id)?.links.push({
+      id: l.id,
+      url: l.url,
+      title: l.title || null,
+      image: l.imageHash ? `/api/previews/${l.imageHash}` : null,
+      pending: l.status === 'pending',
+    });
+  return cards.map((c) => {
+    if (!canSee(user, { is_private: c.isPrivate, created_by: c.createdBy, assigned_to: c.assignedTo })) return redact(c);
+    // Titelbild: erstes Vorschaubild der Links
+    c.cover = c.links.find((l) => l.image)?.image || null;
+    return c;
+  });
 }
 
 app.get(
   '/api/board',
   auth,
-  wrap(() => ({
+  wrap((req) => ({
     columns: COLUMNS,
-    cards: loadCards(),
+    cards: loadCards(req.user),
     tags: db.prepare('SELECT id, name, color FROM tags ORDER BY name').all(),
     users: db.prepare('SELECT id, name, color, is_admin AS isAdmin FROM users ORDER BY name').all(),
   }))
 );
 
-function getCard(id) {
+function getCard(id, user) {
   const c = db.prepare('SELECT * FROM cards WHERE id = ?').get(Number(id));
-  if (!c) fail(404, 'Karte nicht gefunden.');
+  // Private Karten verhalten sich für Unbefugte so, als gäbe es sie nicht
+  if (!c || (user && !canSee(user, c))) fail(404, 'Karte nicht gefunden.');
   return c;
 }
 function validAssignee(v) {
@@ -331,6 +369,7 @@ function setLinks(cardId, links) {
     .map(normalizeUrl)
     .filter(Boolean)
     .forEach((u, i) => ins.run(cardId, u, i));
+  setImmediate(() => preview.schedule(db.prepare('SELECT url FROM links WHERE card_id = ?').all(cardId).map((r) => r.url)));
 }
 function setTags(cardId, tags) {
   if (!Array.isArray(tags)) return;
@@ -343,8 +382,8 @@ app.get(
   '/api/cards/:id',
   auth,
   wrap((req) => {
-    const card = loadCards('WHERE c.id = ?', [Number(req.params.id)])[0];
-    if (!card) fail(404, 'Karte nicht gefunden.');
+    const card = loadCards(req.user, 'WHERE c.id = ?', [Number(req.params.id)])[0];
+    if (!card || card.redacted) fail(404, 'Karte nicht gefunden.');
     card.comments = db
       .prepare(
         `SELECT m.id, m.body, m.created_at AS createdAt, m.user_id AS userId, u.name AS userName, u.color AS userColor
@@ -368,7 +407,7 @@ app.post(
       const max = db.prepare('SELECT COALESCE(MAX(position), 0) AS m FROM cards WHERE column_key = ?').get(column).m;
       const id = db
         .prepare(
-          'INSERT INTO cards (title, description, column_key, position, due_date, created_by, assigned_to) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          'INSERT INTO cards (title, description, column_key, position, due_date, created_by, assigned_to, is_private) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         )
         .run(
           title,
@@ -377,7 +416,8 @@ app.post(
           max + 1,
           validDate(req.body.dueDate),
           req.user.id,
-          validAssignee(req.body.assignedTo)
+          validAssignee(req.body.assignedTo),
+          req.user.isAdmin && req.body.isPrivate ? 1 : 0
         )
         .lastInsertRowid;
       setLinks(id, req.body.links);
@@ -393,7 +433,7 @@ app.patch(
   '/api/cards/:id',
   auth,
   wrap((req) => {
-    const card = getCard(req.params.id);
+    const card = getCard(req.params.id, req.user);
     if (!canEdit(req.user, card)) fail(403, 'Nur die Person, die den Wunsch erstellt hat, darf ihn bearbeiten.');
     const b = req.body;
     tx(() => {
@@ -419,7 +459,7 @@ app.post(
   '/api/cards/:id/move',
   auth,
   wrap((req) => {
-    const card = getCard(req.params.id);
+    const card = getCard(req.params.id, req.user);
     const column = req.body.columnKey;
     if (!COLUMN_KEYS.has(column)) fail(400, 'Unbekannte Spalte.');
     // Familienmitglieder dürfen ihre eigenen Wünsche nur zwischen "Wünsche" und "Zurückgestellt" schieben.
@@ -452,7 +492,7 @@ app.post(
   '/api/cards/:id/assignee',
   auth,
   wrap((req) => {
-    const card = getCard(req.params.id);
+    const card = getCard(req.params.id, req.user);
     if (!req.user.isAdmin && card.created_by !== req.user.id && card.assigned_to !== req.user.id)
       fail(403, 'Zuständigkeit ändern dürfen Admin, Ersteller*in und die zuständige Person.');
     const assignee = validAssignee(req.body.userId);
@@ -462,11 +502,56 @@ app.post(
   })
 );
 
+// Privat schalten (nur Admins)
+app.post(
+  '/api/cards/:id/private',
+  auth,
+  admin,
+  wrap((req) => {
+    const card = getCard(req.params.id, req.user);
+    db.prepare(`UPDATE cards SET is_private = ?, updated_at = datetime('now') WHERE id = ?`).run(req.body.isPrivate ? 1 : 0, card.id);
+    broadcast();
+    return { ok: true };
+  })
+);
+
+// Vorschau eines Links neu laden
+app.post(
+  '/api/cards/:id/previews/refresh',
+  auth,
+  wrap((req) => {
+    const card = getCard(req.params.id, req.user);
+    if (!canEdit(req.user, card)) fail(403, 'Nicht erlaubt.');
+    for (const r of db.prepare('SELECT url FROM links WHERE card_id = ?').all(card.id)) preview.refresh(r.url);
+    broadcast();
+    return { ok: true };
+  })
+);
+
+// Vorschaubilder ausliefern – nur angemeldet und nur, wenn eine sichtbare Karte den Link enthält
+app.get('/api/previews/:hash', auth, (req, res, next) => {
+  try {
+    const p = db.prepare(`SELECT url, image_type FROM previews WHERE image_hash = ? AND status = 'ok'`).get(req.params.hash);
+    const file = p && preview.imagePath(req.params.hash);
+    if (!file) fail(404, 'Nicht gefunden.');
+    const cards = db
+      .prepare('SELECT c.* FROM cards c JOIN links l ON l.card_id = c.id WHERE l.url = ?')
+      .all(p.url);
+    if (!cards.some((c) => canSee(req.user, c))) fail(404, 'Nicht gefunden.');
+    res.setHeader('Content-Type', p.image_type);
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.sendFile(file);
+  } catch (e) {
+    next(e);
+  }
+});
+
 app.delete(
   '/api/cards/:id',
   auth,
   wrap((req) => {
-    const card = getCard(req.params.id);
+    const card = getCard(req.params.id, req.user);
     const ownOpen = card.created_by === req.user.id && (card.column_key === 'wishes' || card.column_key === 'backlog');
     if (!req.user.isAdmin && !ownOpen) fail(403, 'Löschen nicht erlaubt.');
     db.prepare('DELETE FROM cards WHERE id = ?').run(card.id);
@@ -480,7 +565,7 @@ app.post(
   '/api/cards/:id/comments',
   auth,
   wrap((req) => {
-    const card = getCard(req.params.id);
+    const card = getCard(req.params.id, req.user);
     const body = str(req.body.body, 4000);
     if (!body) fail(400, 'Kommentar ist leer.');
     db.prepare('INSERT INTO comments (card_id, user_id, body) VALUES (?, ?, ?)').run(card.id, req.user.id, body);
@@ -621,6 +706,8 @@ app.use((err, req, res, next) => {
   if (!(err instanceof HttpError)) console.error(err);
   res.status(err.status || 500).json({ error: err instanceof HttpError ? err.message : 'Interner Fehler.' });
 });
+
+preview.init(() => broadcast());
 
 app.listen(PORT, HOST, () => {
   console.log(`Druckwunsch v${VERSION} läuft auf http://${HOST}:${PORT}`);

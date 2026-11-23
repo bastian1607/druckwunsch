@@ -8,6 +8,8 @@ Kanban-Board für 3D-Druck-Wünsche der Familie, mit den Spalten **Zurückgestel
 - Live-Aktualisierung: Änderungen erscheinen bei allen sofort
 - Anmeldung per Name + PIN/Passwort (mind. 6 Zeichen). Admin wird nur, wer den Einrichtungs-Code aus der Installation kennt.
 - Rechte: Familienmitglieder legen Wünsche an, bearbeiten ihre eigenen und können sie zwischen *Wünsche* und *Zurückgestellt* verschieben. Nur Admins setzen *In Bearbeitung* / *Fertig* und legen die Reihenfolge fest.
+- **Link-Vorschau:** Zu jedem Link holt der Server Titel und Vorschaubild der Seite (`og:image`). Das erste Bild erscheint als Titelbild auf der Karte. Die Bilder werden lokal gespeichert, die Familie lädt nichts direkt von fremden Seiten.
+- **Private Karten** (Admin-Funktion): Inhalt sehen nur Admins, Ersteller*in und die zuständige Person. Alle anderen sehen nur eine graue „🔒 Privat“-Karte. Das wird serverseitig durchgesetzt.
 - Hell/Dunkel nach Systemeinstellung, auf dem Handy gut bedienbar
 - Eigenes App-Icon. Auf dem Handy über *Teilen → Zum Home-Bildschirm* (iPhone) bzw. *⋮ → App installieren* (Android) wie eine eigene App nutzbar
 
@@ -68,6 +70,8 @@ Vorher wird die Datenbank nach `/var/lib/druckwunsch/backups/` gesichert (die le
 | Daten (SQLite) | `/var/lib/druckwunsch/druckwunsch.db` |
 | Konfiguration (Port, Proxy, Einrichtungs-Code) | `/etc/default/druckwunsch` |
 | Logs | `journalctl -u druckwunsch -f` |
+
+**Link-Vorschau und Sicherheit:** Der Container ruft die eingetragenen Links selbst ab. Erlaubt sind nur öffentliche Adressen auf Port 80/443. Heimnetz, `localhost` und Ähnliches werden blockiert, auch nach Weiterleitungen. Bilder landen in `/var/lib/druckwunsch/previews/`. Manche Seiten sperren automatische Abrufe, dann erscheint dort einfach kein Bild.
 
 PIN vergessen? Ein Admin kann unter *Menü → Familie & Tags verwalten* eine neue PIN setzen.
 

@@ -70,6 +70,10 @@
         <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
       </div>
       <div class="meta" id="card-meta"></div>
+      <label id="card-private" class="private-toggle hidden">
+        <input type="checkbox" id="card-private-cb">
+        <span><b>🔒 Privat</b> – Inhalt sehen nur Admins, Ersteller*in und die zuständige Person. Alle anderen sehen nur „Privat“.</span>
+      </label>
       <div class="field">
         <span class="field-label">Status <span id="card-status-hint" class="muted"></span></span>
         <div id="card-status" class="status-picker" role="radiogroup" aria-label="Status"></div>
@@ -86,7 +90,7 @@
         <textarea name="description" rows="4" placeholder="Farbe, Größe, Material, Anzahl, wofür …" maxlength="10000"></textarea>
       </label>
       <div class="field">
-        <span class="field-label">Links</span>
+        <span class="field-label">Links <button type="button" class="link-btn hidden" id="link-refresh">↻ Vorschau neu laden</button></span>
         <ul id="link-list" class="link-list"></ul>
         <div class="row">
           <input id="link-input" type="url" placeholder="https://www.printables.com/…" inputmode="url">
