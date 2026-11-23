@@ -579,6 +579,33 @@ app.get('/api/covers/:id', auth, (req, res, next) => {
   }
 });
 
+// --- Einstellungen (Admin) ---
+function getSetting(key) {
+  return db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
+}
+app.get(
+  '/api/settings',
+  auth,
+  admin,
+  wrap(() => ({ previewFallback: getSetting('preview_fallback') === '1' }))
+);
+app.put(
+  '/api/settings',
+  auth,
+  admin,
+  wrap((req) => {
+    let retried = 0;
+    if (typeof req.body.previewFallback === 'boolean') {
+      const was = getSetting('preview_fallback') === '1';
+      db.prepare(
+        `INSERT INTO settings (key, value) VALUES ('preview_fallback', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      ).run(req.body.previewFallback ? '1' : '0');
+      if (req.body.previewFallback && !was) retried = preview.retryFailed();
+    }
+    return { ok: true, retried };
+  })
+);
+
 // Vorschau eines Links neu laden
 app.post(
   '/api/cards/:id/previews/refresh',
@@ -772,7 +799,7 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err instanceof HttpError ? err.message : 'Interner Fehler.' });
 });
 
-preview.init(() => broadcast());
+preview.init(() => broadcast(), () => getSetting('preview_fallback') === '1');
 
 app.listen(PORT, HOST, () => {
   console.log(`Druckwunsch v${VERSION} läuft auf http://${HOST}:${PORT}`);

@@ -74,6 +74,8 @@ Vorher wird die Datenbank nach `/var/lib/druckwunsch/backups/` gesichert (die le
 
 **Link-Vorschau und Sicherheit:** Der Container ruft die eingetragenen Links selbst ab. Erlaubt sind nur öffentliche Adressen auf Port 80/443. Heimnetz, `localhost` und Ähnliches werden blockiert, auch nach Weiterleitungen. Bilder landen in `/var/lib/druckwunsch/previews/`. Manche Seiten sperren automatische Abrufe, dann erscheint dort einfach kein Bild.
 
+**Externer Vorschau-Dienst (optional):** Seiten wie MakerWorld blockieren direkte Abrufe. Unter *Menü → Familie & Tags verwalten → Link-Vorschau* kann ein Admin **Microlink** als zweiten Versuch einschalten (standardmäßig aus). Dann geht die Link-Adresse an microlink.io, aber nur, wenn der direkte Abruf scheitert, und nie bei Links privater Karten. Die kostenlose Stufe ist auf wenige Abrufe pro Tag begrenzt. Mit eigenem Schlüssel `MICROLINK_API_KEY=…` in `/etc/default/druckwunsch` wird der Bezahl-Zugang genutzt.
+
 PIN vergessen? Ein Admin kann unter *Menü → Familie & Tags verwalten* eine neue PIN setzen.
 
 ## Lokal entwickeln

@@ -298,6 +298,7 @@
       $('#pin-dialog').showModal();
     } else if (a === 'admin') {
       renderAdmin();
+      loadSettings();
       $('#admin-dialog').showModal();
     }
   });
@@ -806,6 +807,23 @@
       })
     );
   }
+  async function loadSettings() {
+    try {
+      const s = await api('GET', '/api/settings');
+      $('#set-fallback').checked = s.previewFallback;
+      $('#set-fallback-box').classList.toggle('on', s.previewFallback);
+    } catch {}
+  }
+  $('#set-fallback').addEventListener('change', async (e) => {
+    try {
+      const r = await api('PUT', '/api/settings', { previewFallback: e.target.checked });
+      $('#set-fallback-box').classList.toggle('on', e.target.checked);
+      toast(e.target.checked ? `Microlink an${r.retried ? ` – ${r.retried} fehlende Vorschau(en) werden neu versucht` : ''}` : 'Microlink aus');
+    } catch (err) {
+      $('#admin-error').textContent = err.message;
+      e.target.checked = !e.target.checked;
+    }
+  });
   $('#user-add').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target.elements;
